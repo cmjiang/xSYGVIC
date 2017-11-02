@@ -1,0 +1,26 @@
+\begin{thebibliography}{1}
+
+\bibitem{cao1987deflation}
+Z.-h. Cao.
+\newblock On a deflation method for the symmetric generalized eigenvalue
+  problem.
+\newblock {\em Linear Algebra and its Applications}, 92:187--196, 1987.
+
+\bibitem{fix1972algorithm}
+G.~Fix and R.~Heiberger.
+\newblock An algorithm for the ill-conditioned generalized eigenvalue problem.
+\newblock {\em SIAM Journal on Numerical Analysis}, 9(1):78--88, 1972.
+
+\bibitem{jungen92}
+M.~Jungun and R.~Heiberger.
+\newblock The {F}ix-{H}eiberger procedure for solving the generalized
+  ill-conditioned symmetric eigenvalue problem.
+\newblock {\em Inter. J. Quantum Chemistry}, 41(3):387--397, 1992.
+
+\bibitem{parlett80}
+B.~Parlett.
+\newblock {\em The Symmetric Eigenvalue Problem}.
+\newblock Prentice Hall, Englewood Cliffs, NJ, 1980.
+\newblock SIAM Classics Edition 1998.
+
+\end{thebibliography}

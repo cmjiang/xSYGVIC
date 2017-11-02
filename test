@@ -1,0 +1,9 @@
+make clean
+make
+cd example
+./tstdsygvic H1 S1 output1.txt
+./tstdsygvic H2 S2 output2.txt
+./tstdsygvic H3 S3 output3.txt
+./tstdsygvic H4 S4 output4.txt
+./tstdsygvic H5 S5 output5.txt
+cat output1.txt output2.txt output3.txt output4.txt output5.txt> ./../out.txt

@@ -1,0 +1,69 @@
+===================
+xSYGVIC Readme File
+===================
+
+-------------------------------
+Test Run of the xSYGVIC package
+-------------------------------
+* To test the xSYGVIC package, just type:
+  ./test
+
+  If all work correctly (compile, execution ..), file ``out.txt''
+  will be generated in the same directory. It reports the test cases
+  and computed results. 
+
+* If necessary, you need to change the permission of 'test' 
+  to make it executable: 
+  chmod 755 test
+
+-----------------------
+BLAS and LAPACK Library
+-----------------------
+* If BLAS and LAPACK are not installed on your machine, type 'make' will 
+  generate the LAPACK library with the associated LAPACK files in the 
+  directory 'lapacklib'.
+
+* For better performance, if BLAS and LAPACK are available on your machine,
+  say Intel's MKL, modify 'make.inc' to specify:
+  (1) LAPACK_DIR
+  (2) LAPACK_LIB
+  and comment the line:
+  LAPACK_LIB = $(MAIN_DIR)/liblapack.a
+
+--------
+Compiler
+--------
+* Install 'gfortran' if there is not fortran compiler on your machine.
+  On Ubuntu, type:
+  sudo apt-get install gfortran
+
+* If Intel's MKL is to be used, change the complier from 'gfortran' 
+  to 'ifort' in the file 'make.inc'.
+
+------------------------
+Run individual test case
+------------------------
+* The main test routine is 'tstdsygvic.f90' in the directory /example.
+
+* After successfully compiling the package, a test execution file named
+  'tstdsygvic' will be generated in /example.
+
+* To simply run the test /example, type:
+  ./tstdsygvic Aname Bname output
+  where Aname and Bname are names of the matrix files, and
+  output is the name of the output file.
+
+--------------------------
+Format of the Input Matrix
+--------------------------
+* The first line of matrix file specify the order of the matrix, and the
+  following lines are the data of the matrix.
+
+-----------
+Directories 
+-----------
+    lapacklib .... Sourcecode of blas and lapack (only contains the 
+                   subroutines to be used)
+    src .......... Source code
+    example ...... Test examples of the code
+    doc .......... Working notes 

@@ -1,0 +1,767 @@
+\documentclass[11pt]{article}
+\usepackage{amsmath}
+\usepackage{framed}
+\usepackage[top=1in, bottom=1in, left=.8in, right=.8in]{geometry}
+\usepackage{kbordermatrix}
+
+\newcommand{\twobytwo}[4]{
+       \left[ \begin{array}{cc}
+                #1 & #2  \\
+                #3 & #4
+               \end{array} \right] }
+\newcommand{\twobyone}[2]{
+       \left[ \begin{array}{c}
+                #1   \\
+                #2
+               \end{array} \right]} 
+\newcommand{\onebytwo}[2]{
+       \left[ \begin{array}{cc}
+                #1  & #2
+               \end{array} \right] }
+
+
+\begin{document}
+
+\begin{center} 
+{\large 
+Working Notes on the Fix-Heiberger reduction algorithm  \\
+for solving the ill-conditioned generalized symmetric eigenvalue
+problem} \\
+{\em prepared by C. Jiang and Z. Bai, \today}\footnote{
+Chengming Jiang and Zhaojun Bai, Department of Computer Science, 
+University of California, Davis, CA 95616, cmjiang@ucdavis.edu and 
+zbai@ucdavis.edu.}    
+\end{center} 
+
+\paragraph{1. Introduction.}  
+The {generalized symmetric eigenvalue problem} (GSEP) is of
+the form 
+\begin{equation}\label{eq:gep}
+Ax = \lambda B x, 
+\end{equation}
+where $A$ and $B$ are $n\times n$ real symmetric matrices, and
+$B$ is positive definite. LAPACK routine {\tt DSYSV} is a 
+standard solver for the GSEP. 
+In this notes, we describe a LAPACK-style routine  for solving
+the GSEP, where $B$ is positive semi-definite with respect to 
+a prescribed threshold $\varepsilon$, where 
+$0 < \varepsilon \ll 1$. In this case, the problem is called 
+an {\em ill-conditioned} GSEP \cite{fix1972algorithm,jungen92}.
+
+\bigskip
+
+With respect to a prescribed threshold $\varepsilon$,
+LAPACK-style routine {\tt DSYGVIC} determines 
+(a) $A - \lambda B$ is regular and has $k$ $\varepsilon$-stable 
+eigenvalues, where $ 0 \leq k \leq n$; or (b) 
+$A - \lambda B$ is singular, namely 
+$\mbox{det}(A-\lambda B) \equiv 0$ for any $\lambda$. 
+It can be shown that the pencil $A-\lambda B$ is singular 
+if and only if 
+$\mathcal{N}(A)\cap \mathcal{N}(B) \neq \{0\}$, 
+where $\mathcal{N}(Z)$ is the column null space of the matrix $Z$
+\cite{cao1987deflation}. 
+
+\paragraph{2. New LAPACK-style routine DSYGVIC.}   ~ 
+
+The new routine {\tt DSYGVIC} has the following calling sequence: 
+\begin{verbatim} 
+       DSYGVIC( ITYPE, JOBZ, UPLO, N, A, LDA, B, LDB, ETOL, K, W, & 
+                WORK, LDWORK, WORK2, LWORK, IWORK, INFO )
+\end{verbatim} 
+
+Input to {\tt DSYGVIV}: 
+\begin{quote} 
+\begin{description} 
+\item[{\tt ITYPE:}] Specifies the problem type to be solved:
+                    {\tt ITYPE} = 1 only.
+\item[{\tt JOBZ:}]  = 'V': Compute eigenvalues and eigenvectors.
+\item[{\tt UPLO:}]  = 'U': Upper triangles of $A$ and $B$ are stored;\\
+                    = 'L': Lower triangles of $A$ and $B$ are stored.
+\item[{\tt N:}] The order of the matrices $A$ and $B$. ${\tt N} > 0$.
+\item[{\tt A, LDA:}] The matrix $A$ and the leading dimension 
+         of the array {\tt A}. ${\tt LDA} \ge \mbox{max}(1,{\tt N})$.
+\item[{\tt B, LDB:}] The matrix $B$ and
+                     the leading dimension of the array {\tt B}. 
+                     ${\tt LDB} \ge \mbox{max}(1,{\tt N})$.
+\item[{\tt ETOL:}] The parameter used to drop small eigenvalues of B.
+\item[{\tt WORK, LDWORK:}] The workspace matrix and the leading dimension
+                           of the array {\tt WORK}. 
+                           ${\tt LDWORK} \ge \mbox{max}(1,{\tt N})$.
+\item[{\tt WORK2, LWORK:}] The workspace array and its dimension. 
+                           {\tt LWORK} $ \ge 
+                           \mbox{max}({\tt 1, 3 * N + 1})$.
+                           For optimal performance {\tt LWORK} $\ge {\tt 2*N+(N+1)*NB}$
+                           where {\tt NB} is the optimal block size.
+                           
+                           If ${\tt LWORK} = -1$, then a workspace query is
+                           assumed; the routine only calculates the optimal 
+                           size of the {\tt WORK2} array, returns this value 
+                           as the first entry of the {\tt WORK2} array.
+\item[{\tt IWORK:}] The integer workspace array, dimension {\tt N}.
+\end{description} 
+\end{quote} 
+
+Output from {\tt DSYGVIC}: 
+\begin{quote} 
+\begin{description}
+\item[{\tt A:}] Contains the eigenvectors matrix X in the first {\tt K(1)}
+                columns of ${\tt A}$. 
+
+\item[{\tt B:}] Contains the transformation matrix $Q_1R_1Q_2Q_3$, depending
+                on the exit stage.  
+
+\item[{\tt K:}] {\tt K(1)} indicates the number of finite eigenvalues 
+                if ${\tt INFO} = 0$;
+
+                {\tt K(2)} indicates the case number.
+
+\item[{\tt W:}] If ${\tt K(1)} > 0$, 
+               {\tt W} stores the {\tt K(1)}-{\tt ETOL}-stable  eigenvalues.
+\item[{\tt INFO:}] $=0$ then successful exit. 
+
+                   $= -i$, the $i$-th argument had an illegal value.
+\end{description} 
+\end{quote} 
+
+\paragraph{3. Algorithm.}  
+LAPACK-style routine {\tt DSYGVIC} is based on 
+an algorithm first presented by Fix and 
+Heiberger \cite{fix1972algorithm}, also see \cite[section 15.5]{parlett80}.
+With some modification of the Fix-Heiberger algorithm, 
+{\tt DSYGVIC} consists of the following three phases:
+
+\begin{itemize}  
+\item {\bf Phase 1.}
+
+\begin{enumerate} 
+\item Compute the eigenvalue decomposition of $B$:
+\begin{equation*}
+B^{(0)}=
+Q_1^TBQ_1 = D  = \kbordermatrix{\ &n_1&n_2\\
+n_1 & D^{(0)} & \ \\
+n_2 & \ & E^{(0)}}
+\end{equation*}
+where the diagonal entries of $D^{(0)} = \mbox{diag}(d_{ii}^{(0)})$
+ are sorted in descending order and the diagonal elements of $E^{(0)}$ 
+are smaller than $\varepsilon \cdot d_{11}^{(0)}$.
+
+\item {\em Early Exit}: 
+If $n_1 = 0$, then $B$ is a ``zero'' matrix with respect 
+to $\varepsilon$ and 
+\begin{itemize} 
+\item[(a)] if $\mbox{det}(A) = 0$, then $A-\lambda B$ is singular. 
+    Program exits with output parameter \\
+    {\tt (K(1),K(2)) = (-1, 1)}.
+
+\item[(b)]
+    if $\mbox{det}(A) \neq 0$, $A-\lambda B$ is regular,
+    but no finite eigenvalue. 
+    Program exits with output parameter 
+    {\tt (K(1),K(2)) = (0, 1)}.
+\end{itemize} 
+
+
+\item Update $A$: 
+\begin{equation*}
+A^{(0)}=Q_1^{T}AQ_1
+\end{equation*}
+
+\item Set $E^{(0)}=0$, and update $A^{(0)}$ and $B^{(0)}$:
+\begin{equation*}
+A^{(1)}=R_1^{T}A^{(0)}R_1
+=\kbordermatrix{\ &n_1&n_2\\
+n_1 & A_{11}^{(1)} & A_{12}^{(1)} \\
+n_2 & A_{12}^{(1)T} & A_{22}^{(1)}}
+\quad \mbox{and} \quad 
+B^{(1)}=R_1^TB^{(0)}R_1=
+\kbordermatrix{\ &n_1&n_2 \\
+n_1 & I & \ \\
+n_2 & \ & 0}
+\end{equation*}
+where 
+\begin{equation*}
+R_1=
+\kbordermatrix{\ &n_1&n_2 \\
+n_1 & (D^{(0)})^{-1/2} & \ \\
+n_2 &\ & I}
+\end{equation*}
+
+\item {\em Early Exit:}
+If $n_2 = 0$, then $B$ is a $\varepsilon$-well-conditioned matrix 
+and $B^{(1)} = I$. There are $n$ $\varepsilon$-stable eigenvalues of 
+the GSEP \eqref{eq:gep}, which 
+are the eigenvalues of $A^{(1)}$:
+\begin{equation} \label{eq:Bfull} 
+A^{(1)}U=U\Lambda. 
+\end{equation}
+The $n$ eigenpairs of the GSEP \eqref{eq:gep} 
+are $(\Lambda, X = Q_1R_1U)$. Program exits with output parameter 
+    {\tt (K(1),K(2)) = ($n$, 1)}.
+\end{enumerate} 
+
+\item {\bf Phase 2.}
+
+\begin{enumerate} 
+\item  Compute the eigenvalue decomposition of 
+the (2,2) block $A_{22}^{(1)}$ of $A^{(1)}$:  
+\begin{equation*}
+A_{22}^{(2)}=Q_{22}^{(2)T}A_{22}^{(1)}Q_{22}^{(2)}
+=\kbordermatrix{\ &n_3&n_4\\
+n_3 & D^{(2)} & \ \\
+n_4 & \ & E^{(2)}}
+\end{equation*}
+where the diagonal entries of $D^{(2)} = \mbox{diag}(d_{ii}^{(2)})$
+are in absolute-value-descending order and 
+the diagonal elements of $E^{(2)}$ 
+      are smaller than $\varepsilon |d_{11}^{(2)}|$ 
+
+\item {\em Early Exit:}
+If $n_3 = 0$, then $A^{(1)}_{22} = 0$ and by 
+setting $E^{(2)}=0$, we have 
+\begin{equation*}
+A^{(1)} =\kbordermatrix{\ &n_1&n_2\\
+n_1 & A_{11}^{(1)} & A_{12}^{(1)} \\
+n_2 & A_{12}^{(1)T} & 0 } 
+\quad \mbox{and} \quad 
+B^{(1)} =\kbordermatrix{\ &n_1&n_2\\
+n_1 & I & \ \\
+n_2 & \ & 0}, 
+\end{equation*}
+Then 
+\begin{itemize} 
+\item if $n_1 < n_2$, $A-\lambda B$ is singular. 
+Program exits with output parameter  \\
+    {\tt (K(1),K(2)) = (-1, 2)}.
+
+\item if $n_1 \geq n_2$,
+we reveal the rank of $A_{12}^{(1)}$
+by QR decomposition with pivoting:
+\begin{equation*}
+A_{12}^{(1)}P_{12}^{(2)}
+= Q_{12}^{(2)} \twobyone{A_{13}^{(2)}}{0} 
+\end{equation*}
+where the diagonal entries in $A_{13}^{(2)}$ are ordered
+in absolute-value-descending order.
+\begin{itemize} 
+\item[(a)]
+If $n_1 = n_2$ and $A_{12}^{(1)}$ is rank deficient, then 
+$A-\lambda B$ is singular. Program exits with output parameter 
+    {\tt (K(1),K(2)) = (-1, 3)}. 
+
+\item[(b)]
+If $n_1 = n_2$ and $A_{12}^{(1)}$ is full rank,
+then $A-\lambda B$ is regular, but no finite eigenvalues. 
+Program exits with output parameter 
+    {\tt (K(1),K(2)) = (0, 2)}.   
+
+\item[(c)]
+ If $n_1 > n_2$ and $A_{12}^{(1)}$ is rank deficient, 
+then $A-\lambda B$ is singular. Program exits with output parameter 
+    {\tt (K(1),K(2)) = (-1, 4)}. 
+
+\item[(d)]
+If $n_1 > n_2$ and $A_{12}^{(1)}$ is full column rank,
+then  there are $n_1 - n_2$ $\varepsilon$-stable eigenvalues,
+which are the eigenvalues of 
+\begin{equation} \label{eq:A22zero} 
+A^{(2)} U = B^{(2)} U \Lambda
+\end{equation}
+where 
+\begin{align*}
+A^{(2)} & = Q^T_2 A^{(1)} Q_2 
+= \kbordermatrix{\ &n_2& n_1 - n_2 &n_2\\
+n_2 & A_{11}^{(2)} & A_{12}^{(2)} & A_{13}^{(2)} \\
+n_1 - n_2 & A_{12}^{(2)T} & A_{22}^{(2)} & \ \\
+n_2 & A_{13}^{(2)T} & \ & 0}, \\ 
+B^{(2)} & = Q^T_2 B^{(1)} Q_2 
+=\kbordermatrix{\ &n_2&n_1 - n_2&n_2\\
+n_2 & I & \ & \ \\
+n_1 - n_2 & \ & I & \ \\
+n_2 & \ & \ & 0}
+\end{align*}
+and 
+\[ 
+Q_2  =\kbordermatrix{\ &n_1& n_2\\
+n_1 & Q_{12}^{(2)} &  \\
+n_2 &              & P_{12}^{(2)} }. 
+\] 
+Let
+\[
+U
+=\kbordermatrix{\ & n_1 - n_2\\
+n_2 & U_1 \\
+n_1 - n_2 & U_2 \\ 
+n_2 & U_3 \\ 
+}
+\]
+Then the eigenvalue problem \eqref{eq:A22zero} are solved 
+by 
+\begin{align*}
+U_1 & = 0 \\
+A^{(2)}_{22} U_2 & =  U_2\Lambda \\
+U_3 & = -  (A_{13}^{(2)})^{-1} A_{12}^{(2)} U_2 
+\end{align*}
+Consequently, $n_1-n_2$ $\varepsilon$-stable eigenpairs of
+the original GSEP \eqref{eq:gep} are  \\
+$(\Lambda, X = Q_1R_1Q_2 U)$.
+Program exits with output parameter  \\
+    {\tt (K(1),K(2)) = ($n_1-n_2$, 2)}.
+\end{itemize} 
+
+\end{itemize} 
+
+\item Set $E^{(2)}=0$, and update $A^{(1)}$ and  $B^{(1)}$:
+\[
+A^{(2)}=Q_2^{T}A^{(1)}Q_2, \quad
+B^{(2)}=Q_2^{T}B^{(1)}Q_2
+\]
+where
+\begin{equation*}
+Q_2
+=\kbordermatrix{\ &n_1&n_2\\
+n_1 & I & \ \\
+n_2 & \ & Q_{22}^{(2)}}
+\end{equation*}
+
+\item {\em Early Exit:}
+If $n_4 = 0$, 
+then $A_{22}^{(1)}$ is a $\varepsilon$-well-conditioned matrix. 
+We solve the eigenvalue problem 
+\begin{equation} \label{eq:A22full}
+A^{(2)}U=B^{(2)}U\Lambda
+\end{equation}
+where 
+\begin{equation*}
+A^{(2)} =\kbordermatrix{\ &n_1&n_2\\
+n_1 & A_{11}^{(2)} & A_{12}^{(2)} \\
+n_2 & A_{12}^{(2)T} & D^{(2)}}
+\quad \mbox{and} \quad 
+B^{(2)} =\kbordermatrix{\ &n_1&n_2\\
+n_1 & I & \ \\
+n_2 & \ & 0}
+\end{equation*}
+Let
+\[
+U
+=\kbordermatrix{\ & n_1\\
+n_1 & U_1 \\
+n_2 & U_2}
+\] 
+The eigenvalue problem \eqref{eq:A22full} becomes 
+\begin{align*}
+(A_{11}^{(2)}-A_{12}^{(2)}(D^{(2)})^{-1}A_{12}^{(2)T})U_1
+& =  U_1\Lambda \\ 
+U_2 & = -(D^{(2)})^{-1} (A_{12}^{(2)})^T U_1
+\end{align*}
+Consequently,  $n_1$ $\varepsilon$-stable eigenpairs 
+of the original GSEP \eqref{eq:gep} are 
+$(\Lambda, X = Q_1R_1Q_2 U)$. 
+Program exits with output parameter 
+    {\tt (K(1),K(2)) = ($n_1$, 3)}.
+
+\end{enumerate} 
+
+\item {\bf Phase 3.}
+
+\begin{enumerate}
+\item 
+If $n_4 \neq 0$, then $A_{22}^{(1)}$ is $\varepsilon$-ill-conditioned.
+$A^{(2)}$ and $B^{(2)}$ can be written as 3 by 3 blocks: 
+\begin{equation*}
+A^{(2)} =\kbordermatrix{\ &n_1&n_3&n_4\\
+n_1 & A_{11}^{(2)} & A_{12}^{(2)} & A_{13}^{(2)} \\
+n_3 & A_{12}^{(2)T} & D^{(2)} & \ \\
+n_4 & A_{13}^{(2)T} & \ & 0}
+\quad \mbox{and} \quad 
+B^{(2)} =\kbordermatrix{\ &n_1&n_3&n_4\\
+n_1 & I & \ & \ \\
+n_3 & \ & 0 & \ \\
+n_4 & \ & \ & 0}
+\end{equation*}
+where $n_3 + n_4 = n_2$. 
+
+\item {\em Early Exit}:  
+If $n_1 < n_4$, then $A-\lambda B$ is singular. 
+Program exits with output parameter 
+    {\tt (K(1),K(2)) = (-1, 5)}.
+
+\item When $n_1 \geq n_4$,
+we reveal the rank of $A_{13}^{(2)}$ 
+by QR decomposition with pivoting:
+\begin{equation*}
+A_{13}^{(2)}P_{13}^{(3)}=Q_{13}^{(3)}R_{13}^{(3)}
+\end{equation*}
+where
+\begin{equation*}
+R_{13}^{(3)}
+=\kbordermatrix{\ &n_4\\
+n_4 & A_{14}^{(3)} \\
+n_5 & 0}
+\end{equation*}
+
+\item  {\em Early Exit:}  
+(a) 
+If $n_1 = n_4$ and $A_{13}^{(2)}$ is rank deficient, 
+then $A-\lambda B$ is singular. Program exits with output parameter 
+    {\tt (K(1),K(2)) = (-1, 6)}.
+
+(b) 
+If $n_1 = n_4$ and $A_{13}^{(2)}$ is full rank, then $A-\lambda B$ is 
+regular, but no finite eigenvalues. Program exits with output parameter 
+    {\tt (K(1),K(2)) = (0, 3)}.  
+
+(c) 
+If $n_1 > n_4$ and $A_{13}^{(2)}$ is rank deficient, 
+$A - \lambda B$ is singular. Program exits with output parameter 
+    {\tt (K(1),K(2)) = (-1, 7)}. 
+
+\item  Update 
+\[ 
+A^{(3)}=Q_3^{T}A^{(2)}Q_3
+\quad \mbox{and} \quad 
+B^{(3)}=Q_3^{T}B^{(2)}Q_3
+\] 
+where 
+\begin{equation*}
+Q_3
+=\kbordermatrix{\ &n_1&n_3&n_4\\
+n_1 & Q_{13}^{(3)} & \ & \\
+n_3 & \ & I & \ \\
+n_4 & \ & \ & P_{13}^{(3)} }
+\end{equation*}
+
+\item 
+By the rank-revealing decomposition,  
+matrices $A^{(3)}$ and $B^{(3)}$ can be written as 
+$4 \times 4$ blocks: 
+\begin{equation*}
+A^{(3)} =\kbordermatrix{\ &n_4&n_5&n_3&n_4\\
+n_4 & A_{11}^{(3)} & A_{12}^{(3)} & A_{13}^{(3)} & A_{14}^{(3)} \\
+n_5 & (A_{12}^{(3)})^T & A_{22}^{(3)} & A_{23}^{(3)} & 0 \\
+n_3 & (A_{13}^{(3)})^T &(A_{23}^{(3)})^T & D^{(2)} & 0 \\
+n_4 & (A_{14}^{(3)})^T & 0 & 0 & 0}
+\quad \mbox{and} \quad 
+B^{(3)} =\kbordermatrix{\ &n_4&n_5&n_3&n_4\\
+n_4 & I & \ & \ & \ \\
+n_5 & \ & I & \ & \ \\
+n_3 & \ & \ & 0 & \ \\
+n_4 & \ & \ & \ & 0},
+\end{equation*}
+where $n_1 = n_4+n_5$ and $n_2 = n_3+n_4$.
+The $\varepsilon$-stable eigenpairs 
+of the GSEP \eqref{eq:gep} are given by the 
+finite eigenvalues of  
+\begin{equation}\label{eq:A22ill}
+A^{(3)}U=B^{(3)}U\Lambda
+\end{equation}
+
+Let
+\[
+U
+=\kbordermatrix{\ &n_5\\
+n_4 & U_1 \\
+n_5 & U_2 \\
+n_3 & U_3 \\
+n_4 & U_4}
+\] 
+then the eigenvalue problem \eqref{eq:A22ill}
+is equlvalent to the following expressions: 
+\begin{eqnarray*}
+U_1 & = & 0 \\ 
+\left(A_{22}^{(3)}-A_{23}^{(3)}(D^{(3)})^{-1}A_{23}^{(3)T} \right) U_2
+& = & U_2\Lambda \\ 
+U_3 & = & -(D^{(2)})^{-1}A_{23}^{(3)T}U_2 \\ 
+U_4 & = & -(A_{14}^{(3)})^{-1}\left(A_{12}^{(3)}U_2+A_{13}^{(3)}U_3 \right)  
+\end{eqnarray*}
+Consequently, $n_5$ $\varepsilon$-stable eigenpairs 
+of the GSEP \eqref{eq:gep} are given by 
+$(\Lambda, X= Q_1R_1Q_2Q_3U)$.
+Program exits with output parameter 
+    {\tt (K(1),K(2)) = ($n_5$, 4)}.
+\end{enumerate} 
+
+\end{itemize} 
+
+\paragraph{4. Numerical examples.}  
+We design five test cases to illustrate 
+major features of the routine {\tt DSYGVIC}. 
+For all these cases, 
+\begin{equation*}
+A=Q^T H Q \quad\mbox{and}\quad B = Q^T S Q
+\end{equation*}
+where $Q$ is a random orthogonal matrix, and
+$H$ and $S$ are prescribed to be of certain structure for
+testing the different cases of the algorithm. 
+Similar to the test of LAPACK routine {\tt DSYGV},
+the accuracy of computed eigenpairs $(\widehat{X}, \widehat{\Lambda})$ is 
+measured by the following two residuals:
+\begin{equation*}
+\mbox{Res1} = \frac{\|A \widehat{X} - B \widehat{X} \widehat{\Lambda}\|_F}
+{\|A\|_F\,\|\widehat{X}\|_F + \|B\|_F\,\|\widehat{X}\|_F\,\|\widehat{\Lambda}\|_F}
+\quad \mbox{and} \quad 
+\mbox{Res2} = \frac{\|\widehat{X}^T B \widehat{X} - I\|_F}
+                   {\|B\|\,\|\widehat{X}\|_F}
+\end{equation*}
+\begin{description} 
+\item[{\bf Test case 1.}] Consider $10 \times 10$ matrices 
+$A=Q^THQ$ and $B = Q^TSQ$, where 
+\[
+H=\left[\begin{array}{c c c c c c c c c c}
+1 & 0 & 0 & 0 & 0 & 0 & 1 & 0 & 2 & 0 \\
+0 &-1 & 0 & 0 & 0 & 0 & 0 & 1 & 0 & 1 \\
+0 & 0 & 2 & 0 & 0 & 0 & 0 & 0 & 1 & 0 \\
+0 & 0 & 0 & 3 & 0 & 0 & 0 & 0 & 0 & 1 \\
+0 & 0 & 0 & 0 & 4 & 0 & 0 & 0 & 0 & 0 \\
+0 & 0 & 0 & 0 & 0 &-3 & 0 & 0 & 0 & 0 \\
+1 & 0 & 0 & 0 & 0 & 0 & 1 & 0 & 0 & 0 \\
+0 & 1 & 0 & 0 & 0 & 0 & 0 & 1 & 0 & 0 \\
+2 & 0 & 1 & 0 & 0 & 0 & 0 & 0 & 1 & 0 \\
+0 & 1 & 0 & 1 & 0 & 0 & 0 & 0 & 0 & 1
+\end{array}\right]
+\]
+and 
+\[
+S=\mbox{diag}[1,2,3,2,1,1,2,3,1,2]
+\] 
+This is the case where $B$ is positive definite and well-conditioned. 
+
+LAPACK routine {\tt DSYGV} returns 10 eigenvalues with ${\tt INFO} = 0$. 
+New routine {\tt DSYGVIC} with $\varepsilon = 10^{-12}$ also 
+returns 10 eigenvalues with ${\tt INFO} = 0$. 
+The computed eigenvalues agree to machine precision, with the 
+comparable accuracy as shown in the following table: 
+\begin{center}
+  \begin{tabular}{ c || c | c | c | c } 
+    		& {\tt INFO} & \#eigvals & Res1      & Res2   \\ \hline
+  {\tt  DSYGV}   &  0   &  10       & 5.48e-17 & 2.41e-16 \\
+  {\tt  DSYGVIC} &  0   &  10       & 7.32e-17 & 2.38e-16 \\ 
+  \end{tabular}
+\end{center}
+The output parameter {\tt (K(1),K(2))=(10,1)}
+of {\tt DSYGVIC} indicates that the matrix $B$ is well-conditioned, 
+and there are full set of finite eigenvalues of $(A,B)$.
+The original GSEP is reduced to the eigenvalue problem \eqref{eq:Bfull}.
+
+\item[{\bf Test case 2}.] 
+Consider $8 \times 8$ matrices $A=Q^THQ$ and $B = Q^TSQ$, where 
+\[
+H=\left[\begin{array}{c c c c c c c c}
+6 & 0 & 0 & 0 & 0 & 0 & 1 & 0 \\
+0 & 5 & 0 & 0 & 0 & 0 & 0 & 1 \\
+0 & 0 & 4 & 0 & 0 & 0 & 0 & 0 \\
+0 & 0 & 0 & 3 & 0 & 0 & 0 & 0 \\
+0 & 0 & 0 & 0 & 2 & 0 & 0 & 0 \\
+0 & 0 & 0 & 0 & 0 & 1 & 0 & 0 \\
+1 & 0 & 0 & 0 & 0 & 0 & 0 & 0 \\
+0 & 1 & 0 & 0 & 0 & 0 & 0 & 0 \\
+\end{array}\right]
+\]
+and
+\[
+S=\mbox{diag}[1,1,1,1,\delta,\delta,\delta,\delta]
+\]
+This is same test case used by Fix and Heiberger \cite{fix1972algorithm}.
+It is known that as $\delta \rightarrow 0$, $\lambda=3,4$ are the only 
+stable eigenvalues.
+
+Consider $\delta=10^{-15}$,
+the following table shows the computed eigenvalues by 
+LAPACK routine {\tt DSYGV} and new routine 
+{\tt DSYGVIC} with the threshold $\varepsilon=10^{-12}$.
+\begin{center}
+\begin{tabular}{  c || c | c  }
+$\lambda_i$  &   {\tt DSYGV}              & {\tt DSYGVIC} \\ \hline
+1 &   -0.3229260685047438e+08  &  {\bf 0.3000000000000001e+01} \\
+2 &   -0.3107213627119420e+08  &  {\bf 0.3999999999999999e+01} \\
+3 &   {\bf 0.2957918878610765e+01}  & \\
+4 &   {\bf 0.4150528124449937e+01}  & \\
+5 &    0.3107214204558684e+08  & \\
+6 &    0.3229261357421688e+08  & \\
+7 &    0.1004773743630529e+16  & \\
+8 &    0.2202090698823234e+16  & \\
+  \end{tabular}
+\end{center}
+As we can see {\tt DSYGV} returns all 8 eigenvalues including 
+6 unstable ones. For the two stable eigenvalues, there is significant
+loss of accuracy. In contrast, {\tt DSYGVIC} only computes 
+two stable eigenvalues to full machine precision. 
+
+\item[{\bf Test case 3}.] Consider $10 \times 10$ matrices
+$A=Q^TH Q$ and $B = Q^TSQ$, where 
+\[
+H=\left[\begin{array}{c c c c c c c c c c}
+1 & 0 & 0 & 0 & 0 & 0 & 1 & 0 & 2 & 0 \\
+0 &-1 & 0 & 0 & 0 & 0 & 0 & 1 & 0 & 1 \\
+0 & 0 & 2 & 0 & 0 & 0 & 0 & 0 & 1 & 0 \\
+0 & 0 & 0 & 3 & 0 & 0 & 0 & 0 & 0 & 1 \\
+0 & 0 & 0 & 0 & 4 & 0 & 0 & 0 & 0 & 0 \\
+0 & 0 & 0 & 0 & 0 &-3 & 0 & 0 & 0 & 0 \\
+1 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 \\
+0 & 1 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 \\
+2 & 0 & 1 & 0 & 0 & 0 & 0 & 0 & 0 & 0 \\
+0 & 1 & 0 & 1 & 0 & 0 & 0 & 0 & 0 & 0
+\end{array}\right]
+\]
+and 
+\[
+S=\mbox{diag}[1,2,3,2,1,1,2\delta,3\delta,\delta,2\delta]
+\]
+Note that $B$ is very ill-conditioned for small $\delta$. 
+Furthermore,
+the matrix $H$ is designed such that the reduced matrix pair
+is of the form \eqref{eq:A22zero} with $n_1=6$, $n_2=4$ and $n_3=0$.
+
+Consider $\delta=10^{-15}$,
+LAPACK routine {\tt DSYGV} treats $B$ as a positive definite matrix
+and runs successfully with {\tt INFO} = 0, but with significant loss
+of accuracy as shown in the following table. 
+But {\tt DSYGVIC} with the threshold $\varepsilon=10^{-12}$ 
+computes two stable eigenvalues to machine precision.
+\begin{center}
+\begin{tabular}{ c || c | c | c | c   }
+    		& {\tt INFO} & \#eigvals & Res1      & Res2     \\ \hline
+    {\tt DSYGV}   &  0   &   10      & 9.72e-11  & 5.08e-10 \\
+    {\tt DSYGVIC} &  0   &   2       & 1.04e-16  & 8.20e-17 \\ 
+\end{tabular}
+\end{center}
+
+If $\delta=10^{-17}$,
+LAPACK routine {\tt DSYGV} detects $B$ is not positive definite, and 
+returns immediately with {\tt INFO} = 17. 
+In contrast, the new routine {\tt DSYGVIC} with the threshold 
+$\varepsilon=10^{-12}$ successfully completes the computation and
+reports there are two $\varepsilon$-stable eigenvalues with 
+full machine accuracy: 
+\begin{center}
+  \begin{tabular}{ c || c | c | c | c   }
+    		& {\tt INFO} & \#eigvals & Res1      & Res2    \\ \hline
+    {\tt DSYGV}   & 17   &   --      &  --      &  --      \\
+    {\tt DSYGVIC} &  0   &   2       & 1.01e-16 & 1.12e-16 \\ 
+  \end{tabular}
+\end{center}
+The output parameter {\tt (K(1),K(2))=(2,2)} of {\tt DSYGVIC} indicates that 
+the program exits at the case that returns $n_1-n_2$ eigenvalues.
+
+\item[{\bf Test case 4}.] 
+Consider $10 \times 10$ matrices $A=Q^THQ$ and $B = Q^TSQ$, where 
+\[
+H=\left[\begin{array}{c c c c c c c c c c}
+1 & 0 & 0 & 0 & 0 & 0 & 1 & 0 & 2 & 0 \\
+0 &-1 & 0 & 0 & 0 & 0 & 0 & 1 & 0 & 1 \\
+0 & 0 & 2 & 0 & 0 & 0 & 0 & 0 & 1 & 0 \\
+0 & 0 & 0 & 3 & 0 & 0 & 0 & 0 & 0 & 1 \\
+0 & 0 & 0 & 0 & 4 & 0 & 0 & 0 & 0 & 0 \\
+0 & 0 & 0 & 0 & 0 &-3 & 0 & 0 & 0 & 0 \\
+1 & 0 & 0 & 0 & 0 & 0 & 1 & 0 & 0 & 0 \\
+0 & 1 & 0 & 0 & 0 & 0 & 0 & 1 & 0 & 0 \\
+2 & 0 & 1 & 0 & 0 & 0 & 0 & 0 & 1 & 0 \\
+0 & 1 & 0 & 1 & 0 & 0 & 0 & 0 & 0 & 1
+\end{array}\right]
+\]
+and 
+\[
+S=\mbox{diag}[1,2,3,2,1,1,2\delta,3\delta,\delta,2\delta],
+\]
+where matrices $H$ and $S$ are designed such that the 
+reduced eigenvalue problem is of the form \eqref{eq:A22full}
+with $n_1=6$, $n_2=4$ and $n_4=0$ as $B$ becomes ill-conditioned. 
+
+Consider $\delta=10^{-15}$,
+LAPACK routine {\tt DSYGV} treats $B$ as a positive definite matrix
+and runs successfully with {\tt INFO} = 0, but with significant loss
+of accuracy as shown in the following table.
+But {\tt DSYGVIC} with the threshold $\varepsilon=10^{-12}$
+computes six stable eigenvalues to machine precision.
+\begin{center}
+  \begin{tabular}{ c || c | c | c | c   }
+                & {\tt INFO} & \#eigvals & Res1      & Res2     \\ \hline
+    {\tt DSYGV}   &  0   &   10      & 5.50e-3   & 5.58e-10 \\
+    {\tt DSYGVIC} &  0   &   6       & 2.45e-16  & 9.72e-16 \\
+  \end{tabular}
+\end{center}
+
+If $\delta=10^{-17}$,
+LAPACK routine {\tt DSYGV} detects $B$ is not positive definite, and 
+returns immediately with {\tt INFO} = 17. 
+In contrast, the new routine 
+{\tt DSYGVIC} with $\varepsilon=10^{-12}$ returns 6 
+$\varepsilon$-stable eigenvalues with the accuracy 
+\begin{center}
+  \begin{tabular}{ c || c | c | c | c } 
+    		& {\tt INFO} & \#eigvals &   Res1    & Res2    \\ \hline
+  {\tt  DSYGV}   &  17  &   --       &   --      &  --      \\
+  {\tt  DSYGVIC} &  0   &   6        &  8.30e-17 & 2.02e-16 \\ 
+  \end{tabular}
+\end{center}
+The output parameter {\tt (K(1),K(2))=(6,3)} of {\tt DSYGVIC} indicates that 
+the program exits at the case that returns $n_1$ eigenvalues.
+ 
+\item[{\bf Test case 5}.] 
+Consider $10 \times 10$ matrices $A=Q^THQ$ and $B = Q^TSQ$, where 
+\[
+H=\left[\begin{array}{c c c c c c c c c c}
+1 & 0 & 0 & 0 & 0 & 0 & 1 & 0 & 2 & 0 \\
+0 &-1 & 0 & 0 & 0 & 0 & 0 & 1 & 0 & 1 \\
+0 & 0 & 2 & 0 & 0 & 0 & 0 & 0 & 1 & 0 \\
+0 & 0 & 0 & 3 & 0 & 0 & 0 & 0 & 0 & 1 \\
+0 & 0 & 0 & 0 & 4 & 0 & 0 & 0 & 0 & 0 \\
+0 & 0 & 0 & 0 & 0 &-3 & 0 & 0 & 0 & 0 \\
+1 & 0 & 0 & 0 & 0 & 0 & 1 & 0 & 0 & 0 \\
+0 & 1 & 0 & 0 & 0 & 0 & 0 & 1 & 0 & 0 \\
+2 & 0 & 1 & 0 & 0 & 0 & 0 & 0 & 0 & 0 \\
+0 & 1 & 0 & 1 & 0 & 0 & 0 & 0 & 0 & 0
+\end{array}\right]
+\]
+and 
+\[
+S=\mbox{diag}[1,2,3,2,1,1,2\delta,3\delta,\delta,2\delta],
+\]
+where $H$ and $S$ are designed such that the reduced eigenvalue problem is 
+of the form \eqref{eq:A22ill} with $n_1=6,n_2=4,n_3=2,n_4=2$ and $n_5=4$
+as $\delta \rightarrow 0$.
+
+Consider $\delta=10^{-17}$, 
+LAPACK routine {\tt DSYGV} detects $B$ is not positive definite, and 
+returns immediately with {\tt INFO} = 17. 
+In contrast, the new routine 
+{\tt DSYGVIC} with $\varepsilon=10^{-12}$ returns 4
+$\varepsilon$-stable eigenvalues with the accuracy 
+\begin{center}
+  \begin{tabular}{ c || c | c | c | c | } 
+    		& {\tt INFO} & \#eigvals & Res1    & Res2     \\ \hline
+  {\tt  DSYGV}   & 17   &   --      &  --      &  --      \\
+  {\tt  DSYGVIC} &  0   &   4       & 8.49e-17 & 1.95e-16 \\ 
+  \end{tabular}
+\end{center} 
+The output parameter {\tt (K(1),K(2))=(4,4)} of {\tt DSYGVIC} indicates that 
+the program exits at the case that returns $n_5$ eigenvalues.
+
+%Moreover, if a larger $\delta=10^{-15}$ is given, then we have
+%\begin{center}
+%  \begin{tabular}{ c || c | c | c | c   }
+%    		& {\tt INFO} & \#eigvals & Res1      & Res2     \\ \hline
+%    {\tt DSYGV}   &  0   &   10      & 3.07e-3   & 5.91e-10 \\
+%    {\tt DSYGVIC} &  0   &   4       & 1.07e-16  & 3.91e-16 \\ 
+%  \end{tabular}
+%\end{center}
+%In this case, {\tt DSYGV} treats $B$ as a positive definite matrix
+%and runs successfully with {\tt INFO} = 0. But the accuracy is worse
+%than that of {\tt DSYGVIC}, while the latter is still around the
+%machine precision. 
+
+\end{description}
+
+\paragraph{5. To do.} ~ 
+\begin{itemize} 
+\item Theoretical analysis of the accuracy with respect to the 
+      threshold $\varepsilon$ 
+\item CPU timing benchmark for large size $n$. 
+\item Applications 
+\item ...
+\end{itemize} 
+
+
+\bibliographystyle{abbrv}
+\bibliography{refs}
+\end{document}
